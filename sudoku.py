@@ -50,10 +50,10 @@ class Board:
                 if cell in group:
                     cell.groups.append(group)
 
-        assert(len(setup)==9)
+        assert len(setup)==9, 'Malformed board, not 9 lines long'
         idx = 0
         for row in setup:
-            assert(len(row)==9)
+            assert len(row)==9, f'Malformed input, not 9 characters: {row}'
             for entry in row:
                 if entry in '123456789':
                     self.cells[idx].assign(int(entry))
@@ -88,24 +88,23 @@ class Solver:
         self.depth = depth
 
     def solve(self, debug=False):
-        queue = set()
         counter=0
         cells = self.board.cells
         while any(map(lambda cell: cell.value==0, cells)):
             counter+=1
             if counter>3:
                 return self.circuit_breaker()
-            queue.update(filter(lambda x:len(x.candidates)==1, cells))
             if debug:
                 print(self.board.pretty())
-                print(f'queue is now {list(map(lambda x: x.name, queue))}')
-            if len(queue)>0:
-                counter=0
-                cell = queue.pop()
+
+            cell = next((x for x in cells if len(x.candidates)==1), None)
+            if cell != None:
                 cell.assign()
+                counter=0
+
             for group in self.board.groups:
-                self.find_group_singles(group)
-                self.find_group_pairs(group)
+                self.find_single_candidates(group)
+                self.find_tuples(group)
 
         return all(map(lambda cell: cell.value!=0, cells))
 
@@ -128,7 +127,7 @@ class Solver:
                 pass
         return False
 
-    def find_group_singles(self, group):
+    def find_single_candidates(self, group):
         '''find and assign values with only one candidate cell in a group'''
         for value in range(1,10):
             found = list(filter(lambda cell:value in cell.candidates, group))                
@@ -136,23 +135,23 @@ class Solver:
                 cell = found[0]
                 cell.assign(value)
 
-    def find_group_pairs(self, group):
+    def find_tuples(self, group):
         ''' if N cells have the same N-tuple candidates, e.g. (4,7) in two cells,
             then no other cell in the group can have those candidate numbers
             (only supports N=2 right now)'''
         pairs = list(filter(lambda cell:len(cell.candidates)==2, group))
         for i in range(len(pairs)):
-            a = pairs[i].candidates
+            values = pairs[i].candidates
             for j in range(i+1, len(pairs)):
-                if a == pairs[j].candidates:
+                if pairs[j].candidates == values:
                     for cell in group:
                         if cell in [pairs[i], pairs[j]]: continue
-                        for value in a:
+                        for value in values:
                             cell.eliminate(value)
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser('Sodoku puzzle solver')
+    parser = argparse.ArgumentParser('sudoku')
     parser.add_argument('--pretty', action='store_true', default=False,
                         help='Use large printout')
     parser.add_argument('--file', type=str,
@@ -171,8 +170,10 @@ if __name__ == '__main__':
         for line in f:
             setup.append(f.trim())
 
-    board = Board(setup)
-    success = Solver(board, depth=args.depth).solve()
-
-    print(board.pretty() if args.pretty else str(board))
-    print('OK' if success else 'FAILED')
+    try:
+        board = Board(setup)
+        success = Solver(board, depth=args.depth).solve()
+        print(board.pretty() if args.pretty else str(board))
+        print('OK' if success else 'FAILED')
+    except Exception as e:
+        print(e)
